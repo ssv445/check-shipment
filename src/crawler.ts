@@ -218,7 +218,11 @@ export class WebsiteCrawler {
       launchContext: {
         launchOptions: {
           headless: true,
-          args: ['--ignore-certificate-errors']
+          args: [
+            '--ignore-certificate-errors',
+            '--use-mock-keychain', // Prevent macOS keychain access prompt
+            '--password-store=basic' // Use basic password storage instead of system keychain
+          ]
         }
       },
 

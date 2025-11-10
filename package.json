@@ -1,6 +1,6 @@
 {
   "name": "check-shipment",
-  "version": "1.1.0",
+  "version": "1.1.1",
   "description": "Zero-install website validator for checking broken links, SEO, and accessibility before deployment",
   "type": "module",
   "bin": {
