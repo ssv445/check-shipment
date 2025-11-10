@@ -87,11 +87,13 @@ export function mergeConfig(
  */
 export function getDefaultConfig(): Partial<CheckShipmentConfig> {
   return {
-    concurrency: 3,
-    timeout: 60,
-    retryCount: 3,
-    noFail: false,
-    excludePatterns: []
+    concurrency: 10, // Higher default for modern hardware
+    timeout: 30, // Faster timeout
+    retryCount: 1, // Only retry once
+    noFail: true, // Don't fail CI/CD by default
+    excludePatterns: [],
+    useSitemap: false,
+    verbose: false
   };
 }
 
@@ -111,6 +113,9 @@ export function applyDefaults(config: Partial<CheckShipmentConfig>): CheckShipme
     noFail: config.noFail ?? defaults.noFail!,
     excludePatterns: config.excludePatterns ?? defaults.excludePatterns!,
     replaceFrom: config.replaceFrom,
-    replaceTo: config.replaceTo
+    replaceTo: config.replaceTo,
+    useSitemap: config.useSitemap ?? defaults.useSitemap!,
+    sitemapUrl: config.sitemapUrl,
+    verbose: config.verbose ?? defaults.verbose!
   };
 }

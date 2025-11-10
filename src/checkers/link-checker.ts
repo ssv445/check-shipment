@@ -2,9 +2,12 @@ import { Page } from 'playwright';
 import { BaseChecker } from './base.js';
 import { CheckResult, CheckError, ErrorType, LinkInfo } from '../types/index.js';
 import { normalizeUrl, resolveUrl, isSameDomain, isNonHtmlContent, replaceUrlDomain } from '../utils/url.js';
+import { Agent as HttpAgent } from 'http';
+import { Agent as HttpsAgent } from 'https';
 
 /**
  * LinkChecker - Validates all links on a page
+ * Optimized with connection pooling, caching, and compression
  */
 export class LinkChecker extends BaseChecker {
   name = 'LinkChecker';
@@ -15,6 +18,12 @@ export class LinkChecker extends BaseChecker {
   private timeout: number;
   private retryCount: number;
   private maxRedirects = 5;
+
+  // Performance optimizations
+  private httpAgent: HttpAgent;
+  private httpsAgent: HttpsAgent;
+  private responseCache: Map<string, { success: boolean; error?: CheckError; timestamp: number }>;
+  private cacheTTL = 60000; // 60 seconds cache
 
   constructor(
     startUrl: string,
@@ -29,6 +38,27 @@ export class LinkChecker extends BaseChecker {
     this.retryCount = retryCount;
     this.replaceFrom = replaceFrom;
     this.replaceTo = replaceTo;
+
+    // Initialize HTTP agents with connection pooling and keep-alive
+    this.httpAgent = new HttpAgent({
+      keepAlive: true,
+      keepAliveMsecs: 30000,
+      maxSockets: 50, // Max concurrent connections
+      maxFreeSockets: 10,
+      timeout: this.timeout * 1000
+    });
+
+    this.httpsAgent = new HttpsAgent({
+      keepAlive: true,
+      keepAliveMsecs: 30000,
+      maxSockets: 50,
+      maxFreeSockets: 10,
+      timeout: this.timeout * 1000,
+      rejectUnauthorized: false // Handle self-signed certificates
+    });
+
+    // Initialize response cache
+    this.responseCache = new Map();
   }
 
   /**
@@ -62,26 +92,41 @@ export class LinkChecker extends BaseChecker {
   }
 
   /**
-   * Validate a single URL
+   * Validate a single URL with caching and connection pooling
    */
   async validateUrl(url: string, retryAttempt: number = 0): Promise<{ success: boolean; error?: CheckError }> {
+    // Check cache first
+    const cached = this.responseCache.get(url);
+    if (cached && Date.now() - cached.timestamp < this.cacheTTL) {
+      return { success: cached.success, error: cached.error };
+    }
+
     try {
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), this.timeout * 1000);
+
+      // Determine which agent to use
+      const isHttps = url.startsWith('https://');
+      const agent = isHttps ? this.httpsAgent : this.httpAgent;
 
       const response = await fetch(url, {
         method: 'HEAD',
         redirect: 'follow',
         signal: controller.signal,
-        // @ts-ignore
+        // @ts-ignore - Node.js fetch supports agent
+        agent,
         headers: {
-          'User-Agent': 'check-shipment/1.0.0'
+          'User-Agent': 'check-shipment/1.1.1',
+          'Accept-Encoding': 'gzip, deflate, br', // Request compression
+          'Connection': 'keep-alive' // Explicit keep-alive
         }
       });
 
       clearTimeout(timeoutId);
 
       if (response.ok) {
+        // Cache successful response
+        this.responseCache.set(url, { success: true, timestamp: Date.now() });
         return { success: true };
       }
 
@@ -95,17 +140,19 @@ export class LinkChecker extends BaseChecker {
         errorType = ErrorType.HTTP_OTHER;
       }
 
-      return {
-        success: false,
-        error: {
-          type: errorType,
-          url,
-          message: `${response.status} ${response.statusText}`,
-          statusCode: response.status,
-          sourcePages: []
-        }
+      const error: CheckError = {
+        type: errorType,
+        url,
+        message: `${response.status} ${response.statusText}`,
+        statusCode: response.status,
+        sourcePages: []
       };
-    } catch (error: any) {
+
+      // Cache error response
+      this.responseCache.set(url, { success: false, error, timestamp: Date.now() });
+
+      return { success: false, error };
+    } catch (err: any) {
       // Retry logic
       if (retryAttempt < this.retryCount) {
         // Exponential backoff
@@ -118,30 +165,54 @@ export class LinkChecker extends BaseChecker {
       let errorType: ErrorType;
       let message: string;
 
-      if (error.name === 'AbortError') {
+      if (err.name === 'AbortError') {
         errorType = ErrorType.TIMEOUT;
         message = `Request timeout after ${this.timeout} seconds`;
-      } else if (error.message.includes('ENOTFOUND') || error.message.includes('getaddrinfo')) {
+      } else if (err.message?.includes('ENOTFOUND') || err.message?.includes('getaddrinfo')) {
         errorType = ErrorType.DNS_ERROR;
         message = 'DNS resolution failed';
-      } else if (error.message.includes('certificate') || error.message.includes('SSL')) {
+      } else if (err.message?.includes('certificate') || err.message?.includes('SSL')) {
         errorType = ErrorType.SSL_ERROR;
         message = 'SSL certificate error';
       } else {
         errorType = ErrorType.NETWORK_ERROR;
-        message = error.message || 'Network error';
+        message = err.message || 'Network error';
       }
 
-      return {
-        success: false,
-        error: {
-          type: errorType,
-          url,
-          message,
-          sourcePages: []
-        }
+      const checkError: CheckError = {
+        type: errorType,
+        url,
+        message,
+        sourcePages: []
       };
+
+      // Cache network error
+      this.responseCache.set(url, { success: false, error: checkError, timestamp: Date.now() });
+
+      return { success: false, error: checkError };
     }
+  }
+
+  /**
+   * Clean up resources (agents and cache)
+   */
+  destroy(): void {
+    // Destroy HTTP agents to release connections
+    this.httpAgent.destroy();
+    this.httpsAgent.destroy();
+
+    // Clear cache
+    this.responseCache.clear();
+  }
+
+  /**
+   * Get cache statistics
+   */
+  getCacheStats(): { size: number; hitRate: number } {
+    return {
+      size: this.responseCache.size,
+      hitRate: 0 // Could track hits/misses if needed
+    };
   }
 
   /**

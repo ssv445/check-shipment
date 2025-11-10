@@ -25,6 +25,7 @@ program
   .option('--no-fail', 'Exit 0 even if broken links found')
   .option('--use-sitemap', 'Use sitemap.xml to discover URLs (faster)')
   .option('--sitemap-url <url>', 'Custom sitemap URL (auto-discovers if not provided)')
+  .option('--verbose', 'Show detailed logs from crawler')
   .addHelpText('after', `
 
 Examples:
@@ -88,7 +89,8 @@ async function main() {
       retryCount: options.retryCount,
       noFail: options.fail === false, // Commander converts --no-fail to fail: false
       useSitemap: options.useSitemap,
-      sitemapUrl: options.sitemapUrl
+      sitemapUrl: options.sitemapUrl,
+      verbose: options.verbose
     };
 
     // Merge configs (CLI takes precedence)

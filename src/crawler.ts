@@ -1,6 +1,4 @@
-import { PlaywrightCrawler, Dataset } from 'crawlee';
-import cliProgress from 'cli-progress';
-import chalk from 'chalk';
+import { PlaywrightCrawler, log } from 'crawlee';
 import { LinkChecker } from './checkers/index.js';
 import { CheckShipmentConfig, LinkInfo, CrawlStats, CheckError, ReportData } from './types/index.js';
 import { normalizeUrl, isSameDomain, matchesExcludePattern, isNonHtmlContent } from './utils/url.js';
@@ -13,8 +11,8 @@ export class WebsiteCrawler {
   private config: CheckShipmentConfig;
   private linkChecker: LinkChecker;
   private discoveredLinks: Map<string, LinkInfo> = new Map();
+  private crawledUrls: Set<string> = new Set(); // Track URLs already crawled in browser
   private stats: CrawlStats;
-  private progressBar: cliProgress.SingleBar | null = null;
 
   constructor(config: CheckShipmentConfig) {
     this.config = config;
@@ -51,48 +49,20 @@ export class WebsiteCrawler {
   }
 
   /**
-   * Initialize progress bar
+   * Print simple status update
    */
-  initProgressBar(): void {
-    this.progressBar = new cliProgress.SingleBar({
-      format: chalk.cyan('{bar}') + ' | {percentage}% | {value}/{total} pages | {errors} errors | {duration}',
-      barCompleteChar: '\u2588',
-      barIncompleteChar: '\u2591',
-      hideCursor: true
-    });
-
-    this.progressBar.start(100, 0, {
-      errors: 0,
-      duration: '0s'
-    });
+  printStatus(url: string, status: 'crawled' | 'validated', isError: boolean = false): void {
+    const timestamp = new Date().toISOString().substring(11, 19);
+    const statusText = status === 'crawled' ? 'CRAWLED' : isError ? 'ERROR' : 'OK';
+    console.log(`[${timestamp}] ${statusText} ${url}`);
   }
 
   /**
-   * Update progress bar
+   * Print queue status
    */
-  updateProgressBar(): void {
-    if (!this.progressBar) return;
-
-    const elapsed = Math.floor((Date.now() - this.stats.startTime) / 1000);
-    const duration = elapsed < 60 ? `${elapsed}s` : `${Math.floor(elapsed / 60)}m ${elapsed % 60}s`;
-
-    // Estimate total pages (this is approximate)
-    const estimatedTotal = Math.max(this.stats.pagesCrawled + this.discoveredLinks.size, 100);
-
-    this.progressBar.setTotal(estimatedTotal);
-    this.progressBar.update(this.stats.pagesCrawled, {
-      errors: this.stats.brokenLinks,
-      duration
-    });
-  }
-
-  /**
-   * Stop progress bar
-   */
-  stopProgressBar(): void {
-    if (this.progressBar) {
-      this.progressBar.stop();
-    }
+  printQueueStatus(): void {
+    const pending = Array.from(this.discoveredLinks.values()).filter(l => l.status === 'pending').length;
+    console.log(`Queue: ${this.stats.pagesCrawled} crawled, ${this.stats.linksChecked} validated, ${pending} pending, ${this.stats.brokenLinks} errors`);
   }
 
   /**
@@ -121,31 +91,46 @@ export class WebsiteCrawler {
       link => link.status === 'pending'
     );
 
+    console.log(`\nValidating ${linksToValidate.length} links (concurrency: ${this.config.concurrency})...\n`);
+
     // Validate links in batches
     const batchSize = this.config.concurrency || 3;
     for (let i = 0; i < linksToValidate.length; i += batchSize) {
       const batch = linksToValidate.slice(i, i + batchSize);
+
       await Promise.all(
         batch.map(async link => {
           link.status = 'checking';
           const result = await this.linkChecker.validateUrl(link.url);
 
+          const timestamp = new Date().toISOString().substring(11, 19);
+
           if (result.success) {
             link.status = 'success';
+            console.log(`[${timestamp}] 200 ${link.url}`);
           } else {
             link.status = 'error';
             if (result.error) {
               result.error.sourcePages = Array.from(link.sourcePages);
               link.error = result.error;
               this.stats.brokenLinks++;
+              // Show only HTTP error code for errors
+              const errorCode = result.error.statusCode || result.error.type;
+              console.log(`[${timestamp}] ${errorCode} ${link.url}`);
             }
           }
 
           this.stats.linksChecked++;
-          this.updateProgressBar();
         })
       );
+
+      // Print queue status every 20 URLs
+      if ((i + batchSize) % 20 === 0 || i + batchSize >= linksToValidate.length) {
+        this.printQueueStatus();
+      }
     }
+
+    console.log(`\nValidation complete: ${this.stats.linksChecked} checked, ${this.stats.brokenLinks} errors\n`);
   }
 
   /**
@@ -157,20 +142,20 @@ export class WebsiteCrawler {
     }
 
     try {
-      console.log(chalk.blue('Fetching URLs from sitemap...\n'));
+      console.log('Fetching URLs from sitemap...\n');
 
       // Use provided sitemap URL or discover it
       let sitemapUrl: string | undefined = this.config.sitemapUrl;
       if (!sitemapUrl) {
         const discoveredUrl = await discoverSitemap(this.config.url);
         if (!discoveredUrl) {
-          console.log(chalk.yellow('⚠ No sitemap found, falling back to regular crawl\n'));
+          console.log('No sitemap found, falling back to regular crawl\n');
           return [];
         }
         sitemapUrl = discoveredUrl;
       }
 
-      console.log(chalk.dim(`  Using sitemap: ${sitemapUrl}\n`));
+      console.log(`Using sitemap: ${sitemapUrl}\n`);
 
       const urls = await getSitemapUrls(sitemapUrl, this.config.url);
 
@@ -185,11 +170,14 @@ export class WebsiteCrawler {
         return true;
       });
 
-      console.log(chalk.green(`✓ Found ${filteredUrls.length} URLs in sitemap\n`));
-      return filteredUrls;
+      // Randomize URLs to find broken links faster
+      const shuffled = filteredUrls.sort(() => Math.random() - 0.5);
+
+      console.log(`Found ${filteredUrls.length} URLs in sitemap (randomized)\n`);
+      return shuffled;
     } catch (error: any) {
-      console.log(chalk.yellow(`⚠ Failed to fetch sitemap: ${error.message}`));
-      console.log(chalk.yellow('  Falling back to regular crawl\n'));
+      console.log(`Failed to fetch sitemap: ${error.message}`);
+      console.log('Falling back to regular crawl\n');
       return [];
     }
   }
@@ -198,17 +186,21 @@ export class WebsiteCrawler {
    * Run the crawler
    */
   async crawl(): Promise<ReportData> {
-    console.log(chalk.blue('\nStarting website crawl...\n'));
+    // Configure logging level based on verbose flag
+    if (!this.config.verbose) {
+      log.setLevel(log.LEVELS.ERROR); // Only show errors, hide INFO/WARN
+    }
+
+    console.log('\nStarting website crawl...\n');
 
     // Validate start URL
     await this.validateStartUrl();
-    console.log(chalk.green('✓ Start URL is accessible\n'));
+    console.log('Start URL is accessible\n');
 
     // Fetch sitemap URLs if enabled
     const sitemapUrls = await this.fetchSitemapUrls();
 
-    // Initialize progress bar
-    this.initProgressBar();
+    console.log('Starting crawler...\n');
 
     const crawler = new PlaywrightCrawler({
       maxRequestsPerCrawl: 1000, // Limit to prevent infinite crawls
@@ -227,7 +219,29 @@ export class WebsiteCrawler {
       },
 
       preNavigationHooks: [
-        async ({ request }, goToOptions) => {
+        // Block unnecessary resources to speed up page loads
+        async ({ page, request }, goToOptions) => {
+          // Block images, stylesheets, fonts, and other non-essential resources
+          await page.route('**/*', (route) => {
+            const resourceType = route.request().resourceType();
+            const url = route.request().url();
+
+            // Block images, stylesheets, fonts, media
+            if (['image', 'stylesheet', 'font', 'media'].includes(resourceType)) {
+              return route.abort();
+            }
+
+            // Block external scripts (CDN, analytics, etc.) but keep same-origin scripts
+            if (resourceType === 'script') {
+              const isSameOrigin = url.startsWith(this.config.url);
+              if (!isSameOrigin) {
+                return route.abort();
+              }
+            }
+
+            return route.continue();
+          });
+
           // Check if URL should be excluded
           if (this.config.excludePatterns && matchesExcludePattern(request.url, this.config.excludePatterns)) {
             request.noRetry = true;
@@ -247,7 +261,10 @@ export class WebsiteCrawler {
 
       requestHandler: async ({ request, page, enqueueLinks }) => {
         try {
-          const currentUrl = request.url;
+          const currentUrl = normalizeUrl(request.url);
+
+          // Mark this URL as crawled
+          this.crawledUrls.add(currentUrl);
 
           // Wait for network idle + 1 second for React hydration
           await page.waitForLoadState('networkidle');
@@ -263,8 +280,10 @@ export class WebsiteCrawler {
 
           // Enqueue internal links for crawling
           const linksToEnqueue = links.filter(link => {
-            // Skip if already crawled or in queue
-            if (this.stats.pagesCrawled > 0 && this.discoveredLinks.has(normalizeUrl(link))) {
+            const normalized = normalizeUrl(link);
+
+            // Skip if already crawled in browser
+            if (this.crawledUrls.has(normalized)) {
               return false;
             }
 
@@ -282,20 +301,29 @@ export class WebsiteCrawler {
             return isSameDomain(link, this.config.url);
           });
 
-          // Enqueue links for crawling
+          // Enqueue unique links for crawling
           for (const link of linksToEnqueue) {
-            await enqueueLinks({
-              urls: [link],
-              transformRequestFunction: req => {
-                req.url = normalizeUrl(req.url);
-                return req;
-              }
-            });
+            const normalized = normalizeUrl(link);
+            // Double-check before enqueuing
+            if (!this.crawledUrls.has(normalized)) {
+              await enqueueLinks({
+                urls: [normalized],
+                transformRequestFunction: req => {
+                  req.url = normalizeUrl(req.url);
+                  return req;
+                }
+              });
+            }
           }
 
           // Update stats
           this.stats.pagesCrawled++;
-          this.updateProgressBar();
+          // Don't print successful crawls, only errors
+
+          // Print queue status every 10 pages
+          if (this.stats.pagesCrawled % 10 === 0) {
+            this.printQueueStatus();
+          }
 
         } catch (error: any) {
           // Skip excluded and non-HTML URLs silently
@@ -303,8 +331,8 @@ export class WebsiteCrawler {
             return;
           }
 
-          console.error(chalk.yellow(`\n⚠ Failed to crawl: ${request.url}`));
-          console.error(chalk.dim(`   Error: ${error.message}\n`));
+          const timestamp = new Date().toISOString().substring(11, 19);
+          console.error(`[${timestamp}] ERROR CRAWL - ${request.url}: ${error.message}`);
         }
       },
 
@@ -344,10 +372,7 @@ export class WebsiteCrawler {
       await crawler.run([this.config.url]);
     }
 
-    // Stop progress bar
-    this.stopProgressBar();
-
-    console.log(chalk.blue('\n\nValidating discovered links...\n'));
+    console.log('\nCrawling complete. Found ' + this.discoveredLinks.size + ' unique URLs\n');
 
     // Validate all discovered links
     await this.validateAllLinks();
@@ -367,6 +392,13 @@ export class WebsiteCrawler {
       errors,
       timestamp: new Date().toISOString().replace('T', ' ').substring(0, 19)
     };
+
+    // Clean up resources
+    this.linkChecker.destroy();
+
+    // Clear data structures to free memory
+    this.discoveredLinks.clear();
+    this.crawledUrls.clear();
 
     return reportData;
   }

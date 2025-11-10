@@ -24,6 +24,8 @@ export interface CheckShipmentConfig {
   useSitemap?: boolean;
   /** Custom sitemap URL (optional, will auto-discover if not provided) */
   sitemapUrl?: string;
+  /** Show detailed logs from crawler (default: false) */
+  verbose?: boolean;
 }
 
 /**
