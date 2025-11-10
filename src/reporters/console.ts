@@ -48,6 +48,7 @@ export function printConsoleReport(reportData: ReportData): void {
   console.log(`  Start URL:      ${chalk.cyan(config.url)}`);
   console.log(`  Pages Crawled:  ${chalk.cyan(stats.pagesCrawled)}`);
   console.log(`  Links Checked:  ${chalk.cyan(stats.linksChecked)}`);
+  console.log(`  Links Skipped:  ${chalk.cyan(stats.skippedLinks)}`);
   console.log(`  Broken Links:   ${stats.brokenLinks > 0 ? chalk.red(stats.brokenLinks) : chalk.green(stats.brokenLinks)}`);
 
   if (stats.linksChecked > 0) {

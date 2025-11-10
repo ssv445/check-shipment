@@ -51,6 +51,7 @@ export function generateMarkdownReport(reportData: ReportData): string {
   markdown += '## Summary\n\n';
   markdown += `- **Total Pages Crawled:** ${stats.pagesCrawled}\n`;
   markdown += `- **Total Links Checked:** ${stats.linksChecked}\n`;
+  markdown += `- **Total Links Skipped:** ${stats.skippedLinks}\n`;
   markdown += `- **Broken Links Found:** ${stats.brokenLinks}\n`;
 
   if (stats.linksChecked > 0) {

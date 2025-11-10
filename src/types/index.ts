@@ -86,8 +86,9 @@ export enum ErrorType {
 export interface LinkInfo {
   url: string;
   sourcePages: Set<string>;
-  status?: 'pending' | 'checking' | 'success' | 'error';
+  status?: 'pending' | 'checking' | 'success' | 'error' | 'skipped';
   error?: CheckError;
+  skipReason?: string;
 }
 
 /**
@@ -97,6 +98,7 @@ export interface CrawlStats {
   pagesCrawled: number;
   linksChecked: number;
   brokenLinks: number;
+  skippedLinks: number;
   startTime: number;
   endTime?: number;
 }

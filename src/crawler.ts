@@ -27,6 +27,7 @@ export class WebsiteCrawler {
       pagesCrawled: 0,
       linksChecked: 0,
       brokenLinks: 0,
+      skippedLinks: 0,
       startTime: Date.now()
     };
   }
@@ -62,7 +63,7 @@ export class WebsiteCrawler {
    */
   printQueueStatus(): void {
     const pending = Array.from(this.discoveredLinks.values()).filter(l => l.status === 'pending').length;
-    console.log(`Queue: ${this.stats.pagesCrawled} crawled, ${this.stats.linksChecked} validated, ${pending} pending, ${this.stats.brokenLinks} errors`);
+    console.log(`Queue: ${this.stats.pagesCrawled} crawled, ${this.stats.linksChecked} validated, ${this.stats.skippedLinks} skipped, ${pending} pending, ${this.stats.brokenLinks} errors`);
   }
 
   /**
@@ -100,6 +101,26 @@ export class WebsiteCrawler {
 
       await Promise.all(
         batch.map(async link => {
+          // Check if URL should be excluded
+          if (this.config.excludePatterns && matchesExcludePattern(link.url, this.config.excludePatterns)) {
+            link.status = 'skipped';
+            link.skipReason = 'Excluded by pattern';
+            this.stats.skippedLinks++;
+            const timestamp = new Date().toISOString().substring(11, 19);
+            console.log(`[${timestamp}] SKIP ${link.url} (excluded by pattern)`);
+            return;
+          }
+
+          // Check if URL is non-HTML content
+          if (isNonHtmlContent(link.url)) {
+            link.status = 'skipped';
+            link.skipReason = 'Non-HTML content';
+            this.stats.skippedLinks++;
+            const timestamp = new Date().toISOString().substring(11, 19);
+            console.log(`[${timestamp}] SKIP ${link.url} (non-HTML content)`);
+            return;
+          }
+
           link.status = 'checking';
           const result = await this.linkChecker.validateUrl(link.url);
 
@@ -130,7 +151,7 @@ export class WebsiteCrawler {
       }
     }
 
-    console.log(`\nValidation complete: ${this.stats.linksChecked} checked, ${this.stats.brokenLinks} errors\n`);
+    console.log(`\nValidation complete: ${this.stats.linksChecked} checked, ${this.stats.brokenLinks} errors, ${this.stats.skippedLinks} skipped\n`);
   }
 
   /**
@@ -159,21 +180,11 @@ export class WebsiteCrawler {
 
       const urls = await getSitemapUrls(sitemapUrl, this.config.url);
 
-      // Filter out excluded patterns
-      const filteredUrls = urls.filter(url => {
-        if (this.config.excludePatterns && matchesExcludePattern(url, this.config.excludePatterns)) {
-          return false;
-        }
-        if (isNonHtmlContent(url)) {
-          return false;
-        }
-        return true;
-      });
-
+      // Don't filter - add all URLs to queue and handle exclusion during validation
       // Randomize URLs to find broken links faster
-      const shuffled = filteredUrls.sort(() => Math.random() - 0.5);
+      const shuffled = urls.sort(() => Math.random() - 0.5);
 
-      console.log(`Found ${filteredUrls.length} URLs in sitemap (randomized)\n`);
+      console.log(`Found ${urls.length} URLs in sitemap (randomized)\n`);
       return shuffled;
     } catch (error: any) {
       console.log(`Failed to fetch sitemap: ${error.message}`);
@@ -362,20 +373,18 @@ export class WebsiteCrawler {
 
     // Start crawling with either sitemap URLs or the start URL
     if (sitemapUrls.length > 0) {
-      // If using sitemap, crawl from sitemap URLs
-      // But add them to discovered links first for validation
+      // If using sitemap, ONLY use sitemap URLs (no crawling)
       for (const url of sitemapUrls) {
         this.addDiscoveredLink(url, 'sitemap.xml');
       }
 
-      // Start crawler from start URL to discover additional links
-      await crawler.run([this.config.url]);
+      console.log(`\nUsing ${sitemapUrls.length} URLs from sitemap, skipping regular crawl\n`);
+      this.stats.pagesCrawled = 0; // No pages were actually crawled in browser
     } else {
       // Regular crawl starting from the configured URL
       await crawler.run([this.config.url]);
+      console.log('\nCrawling complete. Found ' + this.discoveredLinks.size + ' unique URLs\n');
     }
-
-    console.log('\nCrawling complete. Found ' + this.discoveredLinks.size + ' unique URLs\n');
 
     // Validate all discovered links
     await this.validateAllLinks();
