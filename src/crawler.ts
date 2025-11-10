@@ -318,7 +318,10 @@ export class WebsiteCrawler {
 
           // Update stats
           this.stats.pagesCrawled++;
-          // Don't print successful crawls, only errors
+
+          // Print crawled URL
+          const timestamp = new Date().toISOString().substring(11, 19);
+          console.log(`[${timestamp}] CRAWL ${currentUrl}`);
 
           // Print queue status every 10 pages
           if (this.stats.pagesCrawled % 10 === 0) {
