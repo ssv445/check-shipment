@@ -20,6 +20,10 @@ export interface CheckShipmentConfig {
   retryCount?: number;
   /** Exit 0 even if broken links found */
   noFail?: boolean;
+  /** Use sitemap.xml to discover URLs (default: false) */
+  useSitemap?: boolean;
+  /** Custom sitemap URL (optional, will auto-discover if not provided) */
+  sitemapUrl?: string;
 }
 
 /**

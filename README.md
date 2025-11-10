@@ -71,6 +71,8 @@ npx check-shipment --url=<url> [options]
 - `--timeout=<number>` - Request timeout in seconds (default: 60)
 - `--exclude-patterns=<patterns>` - Comma-separated URL patterns to skip
 - `--retry-count=<number>` - Number of retry attempts for failed requests (default: 3)
+- `--use-sitemap` - Use sitemap.xml to discover URLs (faster, recommended)
+- `--sitemap-url=<url>` - Custom sitemap URL (auto-discovers if not provided)
 
 #### URL Replacement
 
@@ -92,7 +94,9 @@ export default {
   timeout: 60,
   excludePatterns: ['/admin/*', '/api/*', '*.pdf'],
   retryCount: 3,
-  noFail: false
+  noFail: false,
+  useSitemap: true, // Use sitemap.xml for faster URL discovery
+  // sitemapUrl: 'https://example.com/sitemap.xml' // Optional: specify custom sitemap
 };
 ```
 
@@ -135,6 +139,27 @@ npx check-shipment --url=https://example.com \
 ```bash
 npx check-shipment --url=https://example.com --no-fail
 ```
+
+### Use Sitemap for Faster Discovery
+
+Using sitemap.xml is **highly recommended** for faster and more comprehensive URL discovery:
+
+```bash
+# Auto-discover and use sitemap.xml
+npx check-shipment --url=https://example.com --use-sitemap
+
+# Use a specific sitemap URL
+npx check-shipment --url=https://example.com \
+  --use-sitemap \
+  --sitemap-url=https://example.com/sitemap.xml
+```
+
+**Benefits of using sitemap:**
+- Much faster than crawling every page
+- Discovers all URLs without following links
+- Works with large websites (1000+ pages)
+- Automatically handles sitemap indexes
+- Supports gzipped sitemaps (.xml.gz)
 
 ## CI/CD Integration
 

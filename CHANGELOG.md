@@ -5,6 +5,27 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.1.0] - 2025-11-10
+
+### Added
+- **Sitemap Support**: Automatically discover and use sitemap.xml for faster URL discovery
+- `--use-sitemap` flag to enable sitemap-based crawling
+- `--sitemap-url` option to specify custom sitemap URL
+- Support for sitemap indexes (sitemapindex.xml)
+- Support for gzipped sitemaps (.xml.gz)
+- Automatic sitemap discovery from common locations and robots.txt
+- Configuration options: `useSitemap` and `sitemapUrl` in config file
+
+### Changed
+- Improved crawling performance for large websites when using sitemaps
+- Updated README with sitemap usage examples and benefits
+- Added sitemap configuration to example config file
+
+### Technical
+- New `src/utils/sitemap.ts` module for sitemap parsing
+- Uses xml2js for XML parsing
+- Added xml2js as production dependency
+
 ## [1.0.0] - 2025-11-10
 
 ### Added

@@ -14,7 +14,7 @@ const program = new Command();
 program
   .name('check-shipment')
   .description('Zero-install website validator for checking broken links, SEO, and accessibility before deployment')
-  .version('1.0.0')
+  .version('1.1.0')
   .option('--url <url>', 'Starting URL to crawl')
   .option('--concurrency <number>', 'Number of parallel requests (default: 3)', parseInt)
   .option('--timeout <number>', 'Request timeout in seconds (default: 60)', parseInt)
@@ -23,6 +23,8 @@ program
   .option('--replaceTo <url>', 'Domain to replace it with')
   .option('--retry-count <number>', 'Number of retry attempts for failed requests (default: 3)', parseInt)
   .option('--no-fail', 'Exit 0 even if broken links found')
+  .option('--use-sitemap', 'Use sitemap.xml to discover URLs (faster)')
+  .option('--sitemap-url <url>', 'Custom sitemap URL (auto-discovers if not provided)')
   .addHelpText('after', `
 
 Examples:
@@ -37,6 +39,9 @@ Examples:
   ${chalk.cyan('# Exclude admin and API routes')}
   npx check-shipment --url=https://example.com \\
     --exclude-patterns="/admin/*,/api/*"
+
+  ${chalk.cyan('# Use sitemap for faster discovery')}
+  npx check-shipment --url=https://example.com --use-sitemap
 
   ${chalk.cyan('# Use config file')}
   npx check-shipment ${chalk.dim('(reads check-shipment.config.js)')}
@@ -81,7 +86,9 @@ async function main() {
       replaceFrom: options.replaceFrom,
       replaceTo: options.replaceTo,
       retryCount: options.retryCount,
-      noFail: options.fail === false // Commander converts --no-fail to fail: false
+      noFail: options.fail === false, // Commander converts --no-fail to fail: false
+      useSitemap: options.useSitemap,
+      sitemapUrl: options.sitemapUrl
     };
 
     // Merge configs (CLI takes precedence)
@@ -106,6 +113,13 @@ async function main() {
 
     if (config.replaceFrom && config.replaceTo) {
       console.log(chalk.dim('  Replace:     ') + chalk.cyan(`${config.replaceFrom} → ${config.replaceTo}`));
+    }
+
+    if (config.useSitemap) {
+      console.log(chalk.dim('  Use Sitemap: ') + chalk.cyan('Yes'));
+      if (config.sitemapUrl) {
+        console.log(chalk.dim('  Sitemap URL: ') + chalk.cyan(config.sitemapUrl));
+      }
     }
 
     // Create and run crawler

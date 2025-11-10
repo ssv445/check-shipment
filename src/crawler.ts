@@ -4,6 +4,7 @@ import chalk from 'chalk';
 import { LinkChecker } from './checkers/index.js';
 import { CheckShipmentConfig, LinkInfo, CrawlStats, CheckError, ReportData } from './types/index.js';
 import { normalizeUrl, isSameDomain, matchesExcludePattern, isNonHtmlContent } from './utils/url.js';
+import { discoverSitemap, getSitemapUrls } from './utils/sitemap.js';
 
 /**
  * Main crawler class
@@ -148,6 +149,52 @@ export class WebsiteCrawler {
   }
 
   /**
+   * Fetch URLs from sitemap if enabled
+   */
+  async fetchSitemapUrls(): Promise<string[]> {
+    if (!this.config.useSitemap) {
+      return [];
+    }
+
+    try {
+      console.log(chalk.blue('Fetching URLs from sitemap...\n'));
+
+      // Use provided sitemap URL or discover it
+      let sitemapUrl: string | undefined = this.config.sitemapUrl;
+      if (!sitemapUrl) {
+        const discoveredUrl = await discoverSitemap(this.config.url);
+        if (!discoveredUrl) {
+          console.log(chalk.yellow('⚠ No sitemap found, falling back to regular crawl\n'));
+          return [];
+        }
+        sitemapUrl = discoveredUrl;
+      }
+
+      console.log(chalk.dim(`  Using sitemap: ${sitemapUrl}\n`));
+
+      const urls = await getSitemapUrls(sitemapUrl, this.config.url);
+
+      // Filter out excluded patterns
+      const filteredUrls = urls.filter(url => {
+        if (this.config.excludePatterns && matchesExcludePattern(url, this.config.excludePatterns)) {
+          return false;
+        }
+        if (isNonHtmlContent(url)) {
+          return false;
+        }
+        return true;
+      });
+
+      console.log(chalk.green(`✓ Found ${filteredUrls.length} URLs in sitemap\n`));
+      return filteredUrls;
+    } catch (error: any) {
+      console.log(chalk.yellow(`⚠ Failed to fetch sitemap: ${error.message}`));
+      console.log(chalk.yellow('  Falling back to regular crawl\n'));
+      return [];
+    }
+  }
+
+  /**
    * Run the crawler
    */
   async crawl(): Promise<ReportData> {
@@ -156,6 +203,9 @@ export class WebsiteCrawler {
     // Validate start URL
     await this.validateStartUrl();
     console.log(chalk.green('✓ Start URL is accessible\n'));
+
+    // Fetch sitemap URLs if enabled
+    const sitemapUrls = await this.fetchSitemapUrls();
 
     // Initialize progress bar
     this.initProgressBar();
@@ -275,8 +325,20 @@ export class WebsiteCrawler {
       }
     });
 
-    // Start crawling
-    await crawler.run([this.config.url]);
+    // Start crawling with either sitemap URLs or the start URL
+    if (sitemapUrls.length > 0) {
+      // If using sitemap, crawl from sitemap URLs
+      // But add them to discovered links first for validation
+      for (const url of sitemapUrls) {
+        this.addDiscoveredLink(url, 'sitemap.xml');
+      }
+
+      // Start crawler from start URL to discover additional links
+      await crawler.run([this.config.url]);
+    } else {
+      // Regular crawl starting from the configured URL
+      await crawler.run([this.config.url]);
+    }
 
     // Stop progress bar
     this.stopProgressBar();
