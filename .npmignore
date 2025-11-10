@@ -1,0 +1,41 @@
+# Source files
+src/
+tsconfig.json
+
+# Test files
+*.test.ts
+*.spec.ts
+
+# Reports
+.check-shipment/
+
+# Development files
+.vscode/
+.idea/
+
+# Git
+.git/
+.gitignore
+
+# Example config
+check-shipment.config.example.js
+
+# Specification
+spec.md
+IMPLEMENTATION_SUMMARY.md
+
+# Crawlee storage
+storage/
+
+# Logs
+*.log
+npm-debug.log*
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Editor files
+*.swp
+*.swo
+*~
