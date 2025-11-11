@@ -74,16 +74,17 @@ export function generateMarkdownReport(reportData: ReportData): string {
 
     for (const [errorType, errorList] of groupedErrors) {
       markdown += `### ${errorType} (${errorList.length})\n\n`;
-      markdown += '| Broken URL | Source Page |\n';
-      markdown += '|------------|-------------|\n';
+      markdown += '| Broken URL | Found On |\n';
+      markdown += '|------------|----------|\n';
 
       for (const error of errorList) {
         const brokenUrl = error.url;
-        const sourcePages = error.sourcePages.length > 0
-          ? error.sourcePages.join('<br>')
+        // Show only the first source page
+        const sourcePage = error.sourcePages.length > 0
+          ? error.sourcePages[0]
           : 'N/A';
 
-        markdown += `| ${brokenUrl} | ${sourcePages} |\n`;
+        markdown += `| ${brokenUrl} | ${sourcePage} |\n`;
       }
 
       markdown += '\n';

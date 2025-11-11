@@ -77,7 +77,7 @@ export function printConsoleReport(reportData: ReportData): void {
     const table = new Table({
       head: [
         chalk.bold('Broken URL'),
-        chalk.bold('Source Page(s)')
+        chalk.bold('Found On')
       ],
       colWidths: [50, 50],
       wordWrap: true,
@@ -87,15 +87,14 @@ export function printConsoleReport(reportData: ReportData): void {
     });
 
     for (const error of errorList) {
-      const sourcePages = error.sourcePages.slice(0, 3); // Show max 3 source pages
-      const sourcePagesText = sourcePages.join('\n');
-      const moreText = error.sourcePages.length > 3
-        ? chalk.dim(`\n...and ${error.sourcePages.length - 3} more`)
-        : '';
+      // Show only the first source page
+      const sourcePage = error.sourcePages.length > 0
+        ? error.sourcePages[0]
+        : 'N/A';
 
       table.push([
         chalk.red(error.url),
-        sourcePagesText + moreText
+        sourcePage
       ]);
     }
 
