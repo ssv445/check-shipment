@@ -1,5 +1,6 @@
 import { PlaywrightCrawler, log } from 'crawlee';
 import { LinkChecker } from './checkers/index.js';
+import { PageValidator } from './checkers/page-validator.js';
 import { CheckShipmentConfig, LinkInfo, CrawlStats, CheckError, ReportData } from './types/index.js';
 import { normalizeUrl, isSameDomain, matchesExcludePattern, isNonHtmlContent } from './utils/url.js';
 import { discoverSitemap, getSitemapUrls } from './utils/sitemap.js';
@@ -10,6 +11,7 @@ import { discoverSitemap, getSitemapUrls } from './utils/sitemap.js';
 export class WebsiteCrawler {
   private config: CheckShipmentConfig;
   private linkChecker: LinkChecker;
+  private pageValidator: PageValidator;
   private discoveredLinks: Map<string, LinkInfo> = new Map();
   private crawledUrls: Set<string> = new Set(); // Track URLs already crawled in browser
   private stats: CrawlStats;
@@ -20,6 +22,11 @@ export class WebsiteCrawler {
       config.url,
       config.timeout,
       config.retryCount,
+      config.replaceFrom,
+      config.replaceTo
+    );
+    this.pageValidator = new PageValidator(
+      config.url,
       config.replaceFrom,
       config.replaceTo
     );
@@ -85,14 +92,21 @@ export class WebsiteCrawler {
   }
 
   /**
-   * Validate all discovered links
+   * Validate remaining links that weren't crawled (external links, skipped links, etc.)
+   * This is for links that were discovered but not loaded in the browser
    */
-  async validateAllLinks(): Promise<void> {
+  async validateRemainingLinks(): Promise<void> {
+    // Only validate links that haven't been validated yet (status === 'pending')
     const linksToValidate = Array.from(this.discoveredLinks.values()).filter(
       link => link.status === 'pending'
     );
 
-    console.log(`\nValidating ${linksToValidate.length} links (concurrency: ${this.config.concurrency})...\n`);
+    if (linksToValidate.length === 0) {
+      console.log('\nAll discovered links have been validated during crawling.\n');
+      return;
+    }
+
+    console.log(`\nValidating ${linksToValidate.length} remaining links (concurrency: ${this.config.concurrency})...\n`);
 
     // Validate links in batches
     const batchSize = this.config.concurrency || 3;
@@ -151,7 +165,7 @@ export class WebsiteCrawler {
       }
     }
 
-    console.log(`\nValidation complete: ${this.stats.linksChecked} checked, ${this.stats.brokenLinks} errors, ${this.stats.skippedLinks} skipped\n`);
+    console.log(`\nRemaining validation complete: ${this.stats.linksChecked} total checked, ${this.stats.brokenLinks} errors, ${this.stats.skippedLinks} skipped\n`);
   }
 
   /**
@@ -270,7 +284,7 @@ export class WebsiteCrawler {
         }
       ],
 
-      requestHandler: async ({ request, page, enqueueLinks }) => {
+      requestHandler: async ({ request, page, enqueueLinks, response }) => {
         try {
           const currentUrl = normalizeUrl(request.url);
 
@@ -281,8 +295,39 @@ export class WebsiteCrawler {
           await page.waitForLoadState('networkidle');
           await page.waitForTimeout(1000);
 
-          // Extract links using the LinkChecker
-          const links = await this.linkChecker.extractLinks(page, currentUrl);
+          // === VALIDATION STEP: Validate the loaded page immediately ===
+          const validationResult = await this.pageValidator.run(page, currentUrl, response || null);
+          const timestamp = new Date().toISOString().substring(11, 19);
+
+          // Add/update link info with validation result
+          if (!this.discoveredLinks.has(currentUrl)) {
+            this.discoveredLinks.set(currentUrl, {
+              url: currentUrl,
+              sourcePages: new Set(['Direct navigation']),
+              status: validationResult.passed ? 'success' : 'error'
+            });
+          }
+
+          // Record any errors found during validation
+          if (!validationResult.passed && validationResult.errors.length > 0) {
+            const linkInfo = this.discoveredLinks.get(currentUrl)!;
+            linkInfo.status = 'error';
+            linkInfo.error = validationResult.errors[0]; // Take first error
+            linkInfo.error.sourcePages = Array.from(linkInfo.sourcePages);
+            this.stats.brokenLinks++;
+
+            const errorCode = linkInfo.error.statusCode || linkInfo.error.type;
+            console.log(`[${timestamp}] ${errorCode} ${currentUrl}`);
+          } else {
+            const linkInfo = this.discoveredLinks.get(currentUrl)!;
+            linkInfo.status = 'success';
+            console.log(`[${timestamp}] 200 ${currentUrl}`);
+          }
+
+          this.stats.linksChecked++;
+
+          // === LINK EXTRACTION: Extract links for further crawling ===
+          const links = await this.pageValidator.extractLinks(page, currentUrl);
 
           // Add discovered links to tracking
           for (const link of links) {
@@ -329,10 +374,6 @@ export class WebsiteCrawler {
 
           // Update stats
           this.stats.pagesCrawled++;
-
-          // Print crawled URL
-          const timestamp = new Date().toISOString().substring(11, 19);
-          console.log(`[${timestamp}] CRAWL ${currentUrl}`);
 
           // Print queue status every 10 pages
           if (this.stats.pagesCrawled % 10 === 0) {
@@ -386,8 +427,8 @@ export class WebsiteCrawler {
       console.log('\nCrawling complete. Found ' + this.discoveredLinks.size + ' unique URLs\n');
     }
 
-    // Validate all discovered links
-    await this.validateAllLinks();
+    // Validate remaining links that weren't crawled (external links, etc.)
+    await this.validateRemainingLinks();
 
     // Finalize stats
     this.stats.endTime = Date.now();
