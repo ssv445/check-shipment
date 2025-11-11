@@ -116,7 +116,7 @@ export class LinkChecker extends BaseChecker {
         // @ts-ignore - Node.js fetch supports agent
         agent,
         headers: {
-          'User-Agent': 'check-shipment/1.2.0',
+          'User-Agent': 'check-shipment/1.2.1',
           'Accept-Encoding': 'gzip, deflate, br', // Request compression
           'Connection': 'keep-alive' // Explicit keep-alive
         }
