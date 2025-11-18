@@ -78,6 +78,13 @@ export enum ErrorType {
   NETWORK_ERROR = 'Network Error',
   REDIRECT_LOOP = 'Redirect Loop',
   INVALID_URL = 'Invalid URL',
+  // SEO-related errors
+  MISSING_CANONICAL = 'Missing Canonical URL',
+  DUPLICATE_CANONICAL = 'Duplicate Canonical URLs',
+  INVALID_CANONICAL = 'Invalid Canonical URL',
+  MISSING_META_DESCRIPTION = 'Missing Meta Description',
+  MISSING_TITLE = 'Missing Page Title',
+  MISSING_OPEN_GRAPH = 'Missing Open Graph Tags',
 }
 
 /**
@@ -92,6 +99,16 @@ export interface LinkInfo {
 }
 
 /**
+ * SEO check statistics
+ */
+export interface SEOCheckStats {
+  canonicalUrl: { checked: number; passed: number; failed: number };
+  metaDescription: { checked: number; passed: number; failed: number };
+  pageTitle: { checked: number; passed: number; failed: number };
+  openGraphTags: { checked: number; passed: number; failed: number };
+}
+
+/**
  * Crawl statistics
  */
 export interface CrawlStats {
@@ -99,6 +116,9 @@ export interface CrawlStats {
   linksChecked: number;
   brokenLinks: number;
   skippedLinks: number;
+  seoChecked: number;
+  seoErrors: number;
+  seoCheckStats?: SEOCheckStats;
   startTime: number;
   endTime?: number;
 }

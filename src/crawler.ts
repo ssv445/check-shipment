@@ -1,6 +1,7 @@
 import { PlaywrightCrawler, log } from 'crawlee';
 import { LinkChecker } from './checkers/index.js';
 import { PageValidator } from './checkers/page-validator.js';
+import { SEOValidator } from './checkers/seo-validator.js';
 import { CheckShipmentConfig, LinkInfo, CrawlStats, CheckError, ReportData } from './types/index.js';
 import { normalizeUrl, isSameDomain, matchesExcludePattern, isNonHtmlContent } from './utils/url.js';
 import { discoverSitemap, getSitemapUrls } from './utils/sitemap.js';
@@ -12,6 +13,7 @@ export class WebsiteCrawler {
   private config: CheckShipmentConfig;
   private linkChecker: LinkChecker;
   private pageValidator: PageValidator;
+  private seoValidator: SEOValidator;
   private discoveredLinks: Map<string, LinkInfo> = new Map();
   private crawledUrls: Set<string> = new Set(); // Track URLs already crawled in browser
   private stats: CrawlStats;
@@ -30,11 +32,20 @@ export class WebsiteCrawler {
       config.replaceFrom,
       config.replaceTo
     );
+    this.seoValidator = new SEOValidator();
     this.stats = {
       pagesCrawled: 0,
       linksChecked: 0,
       brokenLinks: 0,
       skippedLinks: 0,
+      seoChecked: 0,
+      seoErrors: 0,
+      seoCheckStats: {
+        canonicalUrl: { checked: 0, passed: 0, failed: 0 },
+        metaDescription: { checked: 0, passed: 0, failed: 0 },
+        pageTitle: { checked: 0, passed: 0, failed: 0 },
+        openGraphTags: { checked: 0, passed: 0, failed: 0 }
+      },
       startTime: Date.now()
     };
   }
@@ -297,6 +308,65 @@ export class WebsiteCrawler {
 
           // === VALIDATION STEP: Validate the loaded page immediately ===
           const validationResult = await this.pageValidator.run(page, currentUrl, response || null);
+
+          // === SEO VALIDATION: Run SEO checks on the page ===
+          const seoResult = await this.seoValidator.run(page, currentUrl);
+
+          // Track SEO validation stats
+          this.stats.seoChecked++;
+
+          // Track individual SEO check results
+          const seoStats = this.stats.seoCheckStats!;
+
+          // Canonical URL check
+          seoStats.canonicalUrl.checked++;
+          const hasCanonicalError = seoResult.errors.some(e =>
+            e.type === 'Missing Canonical URL' ||
+            e.type === 'Duplicate Canonical URLs' ||
+            e.type === 'Invalid Canonical URL'
+          );
+          if (hasCanonicalError) {
+            seoStats.canonicalUrl.failed++;
+          } else {
+            seoStats.canonicalUrl.passed++;
+          }
+
+          // Meta Description check
+          seoStats.metaDescription.checked++;
+          const hasMetaDescError = seoResult.errors.some(e => e.type === 'Missing Meta Description');
+          if (hasMetaDescError) {
+            seoStats.metaDescription.failed++;
+          } else {
+            seoStats.metaDescription.passed++;
+          }
+
+          // Page Title check
+          seoStats.pageTitle.checked++;
+          const hasTitleError = seoResult.errors.some(e => e.type === 'Missing Page Title');
+          if (hasTitleError) {
+            seoStats.pageTitle.failed++;
+          } else {
+            seoStats.pageTitle.passed++;
+          }
+
+          // Open Graph Tags check
+          seoStats.openGraphTags.checked++;
+          const hasOgError = seoResult.errors.some(e => e.type === 'Missing Open Graph Tags');
+          if (hasOgError) {
+            seoStats.openGraphTags.failed++;
+          } else {
+            seoStats.openGraphTags.passed++;
+          }
+
+          // Track overall SEO errors
+          if (seoResult.errors.length > 0) {
+            this.stats.seoErrors++;
+          }
+
+          // Merge errors from both validators
+          const allErrors = [...validationResult.errors, ...seoResult.errors];
+          const allWarnings = [...validationResult.warnings, ...seoResult.warnings];
+
           const timestamp = new Date().toISOString().substring(11, 19);
 
           // Add/update link info with validation result
@@ -304,15 +374,15 @@ export class WebsiteCrawler {
             this.discoveredLinks.set(currentUrl, {
               url: currentUrl,
               sourcePages: new Set(['Direct navigation']),
-              status: validationResult.passed ? 'success' : 'error'
+              status: allErrors.length > 0 ? 'error' : 'success'
             });
           }
 
           // Record any errors found during validation
-          if (!validationResult.passed && validationResult.errors.length > 0) {
+          if (allErrors.length > 0) {
             const linkInfo = this.discoveredLinks.get(currentUrl)!;
             linkInfo.status = 'error';
-            linkInfo.error = validationResult.errors[0]; // Take first error
+            linkInfo.error = allErrors[0]; // Take first error
             linkInfo.error.sourcePages = Array.from(linkInfo.sourcePages);
             this.stats.brokenLinks++;
 
@@ -429,6 +499,29 @@ export class WebsiteCrawler {
 
     // Validate remaining links that weren't crawled (external links, etc.)
     await this.validateRemainingLinks();
+
+    // Print SEO validation summary
+    const seoPassedCount = this.stats.seoChecked - this.stats.seoErrors;
+    const seoStats = this.stats.seoCheckStats!;
+
+    console.log('\n' + '='.repeat(60));
+    console.log('SEO VALIDATION SUMMARY');
+    console.log('='.repeat(60));
+    console.log(`Total pages checked: ${this.stats.seoChecked}`);
+    console.log(`✓ Passed all SEO checks: ${seoPassedCount}`);
+    console.log(`✗ Failed one or more checks: ${this.stats.seoErrors}`);
+    console.log('');
+    console.log('Individual SEO Checks:');
+    console.log('─'.repeat(60));
+    console.log(`  1. Canonical URL`);
+    console.log(`     Checked: ${seoStats.canonicalUrl.checked} | ✓ Passed: ${seoStats.canonicalUrl.passed} | ✗ Failed: ${seoStats.canonicalUrl.failed}`);
+    console.log(`  2. Meta Description`);
+    console.log(`     Checked: ${seoStats.metaDescription.checked} | ✓ Passed: ${seoStats.metaDescription.passed} | ✗ Failed: ${seoStats.metaDescription.failed}`);
+    console.log(`  3. Page Title`);
+    console.log(`     Checked: ${seoStats.pageTitle.checked} | ✓ Passed: ${seoStats.pageTitle.passed} | ✗ Failed: ${seoStats.pageTitle.failed}`);
+    console.log(`  4. Open Graph Tags`);
+    console.log(`     Checked: ${seoStats.openGraphTags.checked} | ✓ Passed: ${seoStats.openGraphTags.passed} | ✗ Failed: ${seoStats.openGraphTags.failed}`);
+    console.log('='.repeat(60) + '\n');
 
     // Finalize stats
     this.stats.endTime = Date.now();
