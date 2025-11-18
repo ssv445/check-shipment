@@ -14,7 +14,7 @@ const program = new Command();
 program
   .name('check-shipment')
   .description('Zero-install website validator for checking broken links, SEO, and accessibility before deployment')
-  .version('1.2.1')
+  .version('1.3.0')
   .option('--url <url>', 'Starting URL to crawl')
   .option('--concurrency <number>', 'Number of parallel requests (default: 3)', parseInt)
   .option('--timeout <number>', 'Request timeout in seconds (default: 60)', parseInt)

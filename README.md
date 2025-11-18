@@ -1,412 +1,188 @@
 # check-shipment
 
-> Zero-install website validator for checking broken links, SEO, and accessibility before deployment
+> Zero-install website validator - Check broken links and SEO before deployment
 
-`check-shipment` is a powerful CLI tool designed for developers to test their websites for common issues before deployment. It provides a single command that can be integrated into development workflows to catch obvious problems before shipping to production.
+Catch broken links and SEO issues before your users do. One command, zero configuration.
 
 ## Features
 
-✅ **Link Validation** - Detect broken links, 404s, and network errors
-🚀 **JavaScript Support** - Full browser rendering for React, Vue, and other SPA frameworks
-⚡ **Fast & Concurrent** - Parallel crawling for quick results
-📊 **Beautiful Reports** - Console output and markdown reports
-🔧 **Zero Install** - Run directly with `npx`
-🎯 **CI/CD Ready** - Perfect for pre-deployment checks
-⚙️ **Configurable** - Support for config files and CLI options
+- ✅ **Link Validation** - Find 404s, broken links, and network errors
+- 🔍 **SEO Checks** - Validate canonical URLs, meta tags, and Open Graph
+- 🚀 **JavaScript Support** - Full browser rendering for React, Vue, Next.js
+- ⚡ **Fast** - Parallel crawling with sitemap support
+- 🔧 **Zero Install** - Run with `npx`, no setup needed
 
 ## Quick Start
 
 ```bash
-# Run directly with npx (no installation required)
+# Check any website
 npx check-shipment --url=https://example.com
 
-# Test local development server
+# Check local dev server
 npx check-shipment --url=http://localhost:3000
 
-# Use configuration file
-npx check-shipment
+# Use sitemap (recommended for speed)
+npx check-shipment --url=https://example.com --use-sitemap
 ```
 
-## Installation
-
-### Zero-Install (Recommended)
-
-Run directly with `npx`:
-
-```bash
-npx check-shipment --url=https://example.com
-```
-
-### Global Installation
-
-For frequent use:
-
-```bash
-npm install -g check-shipment
-check-shipment --url=https://example.com
-```
-
-### Requirements
-
-- **Node.js**: Version 22 or higher
-- **Operating Systems**: macOS, Linux, Windows
+**Requirements:** Node.js 22+
 
 ## Usage
 
-### Basic Usage
+### Basic Command
 
 ```bash
-npx check-shipment --url=<url> [options]
+npx check-shipment --url=<url>
 ```
 
-### CLI Options
+### Common Options
 
-#### Required Arguments
+| Option | Description | Default |
+|--------|-------------|---------|
+| `--url` | Starting URL to crawl | Required |
+| `--use-sitemap` | Use sitemap.xml (faster) | false |
+| `--concurrency` | Parallel requests | 3 |
+| `--exclude-patterns` | Skip URL patterns | none |
+| `--timeout` | Request timeout (seconds) | 60 |
+| `--no-fail` | Don't exit with error code | false |
 
-- `--url=<url>` - Starting URL to crawl
+### Config File
 
-#### Crawling Options
-
-- `--concurrency=<number>` - Number of parallel requests (default: 3)
-- `--timeout=<number>` - Request timeout in seconds (default: 60)
-- `--exclude-patterns=<patterns>` - Comma-separated URL patterns to skip
-- `--retry-count=<number>` - Number of retry attempts for failed requests (default: 3)
-- `--use-sitemap` - Use sitemap.xml to discover URLs (faster, recommended)
-- `--sitemap-url=<url>` - Custom sitemap URL (auto-discovers if not provided)
-
-#### URL Replacement
-
-- `--replaceFrom=<url>` - Domain to replace in discovered links
-- `--replaceTo=<url>` - Domain to replace it with
-
-#### Output Options
-
-- `--no-fail` - Exit with code 0 even if broken links are found
-
-### Configuration File
-
-Create a `check-shipment.config.js` file in your project root:
+Create `check-shipment.config.js`:
 
 ```javascript
 export default {
   url: 'http://localhost:3000',
-  concurrency: 3,
-  timeout: 60,
-  excludePatterns: ['/admin/*', '/api/*', '*.pdf'],
-  retryCount: 3,
-  noFail: false,
-  useSitemap: true, // Use sitemap.xml for faster URL discovery
-  // sitemapUrl: 'https://example.com/sitemap.xml' // Optional: specify custom sitemap
+  useSitemap: true,
+  excludePatterns: ['/admin/*', '*.pdf'],
+  concurrency: 5
 };
 ```
 
-**Note:** CLI arguments override config file values.
+Then run: `npx check-shipment`
 
 ## Examples
 
-### Test Local Development Server
-
 ```bash
+# Basic usage
 npx check-shipment --url=http://localhost:3000
-```
 
-### Test Local Site with Production URLs
+# With sitemap (recommended)
+npx check-shipment --url=https://example.com --use-sitemap
 
-If your local site has links pointing to production:
+# Exclude patterns
+npx check-shipment --url=https://example.com \
+  --exclude-patterns="/admin/*,*.pdf"
 
-```bash
+# Test local with production URLs
 npx check-shipment --url=http://localhost:3000 \
   --replaceFrom=https://production.com \
   --replaceTo=http://localhost:3000
-```
 
-### Exclude Specific Patterns
-
-```bash
+# Faster crawling
 npx check-shipment --url=https://example.com \
-  --exclude-patterns="/admin/*,/api/*,*.pdf"
+  --concurrency=10 --use-sitemap
 ```
 
-### Higher Concurrency for Faster Crawls
+## SEO Validation
 
-```bash
-npx check-shipment --url=https://example.com \
-  --concurrency=10
+Automatically checks every page for:
+
+1. **Canonical URL** - Validates presence and correctness
+2. **Meta Description** - Checks existence and length (50-160 chars)
+3. **Page Title** - Ensures proper title tags (30-60 chars)
+4. **Open Graph Tags** - Validates og:title, og:description, og:image
+
+Example output:
 ```
+============================================================
+SEO VALIDATION SUMMARY
+============================================================
+Total pages checked: 25
+✓ Passed all SEO checks: 20
+✗ Failed one or more checks: 5
 
-### Use in Reporting Mode (No CI Failures)
-
-```bash
-npx check-shipment --url=https://example.com --no-fail
+Individual SEO Checks:
+────────────────────────────────────────────────────────────
+  1. Canonical URL
+     Checked: 25 | ✓ Passed: 22 | ✗ Failed: 3
+  2. Meta Description
+     Checked: 25 | ✓ Passed: 24 | ✗ Failed: 1
+  3. Page Title
+     Checked: 25 | ✓ Passed: 25 | ✗ Failed: 0
+  4. Open Graph Tags
+     Checked: 25 | ✓ Passed: 20 | ✗ Failed: 5
+============================================================
 ```
-
-### Use Sitemap for Faster Discovery
-
-Using sitemap.xml is **highly recommended** for faster and more comprehensive URL discovery:
-
-```bash
-# Auto-discover and use sitemap.xml
-npx check-shipment --url=https://example.com --use-sitemap
-
-# Use a specific sitemap URL
-npx check-shipment --url=https://example.com \
-  --use-sitemap \
-  --sitemap-url=https://example.com/sitemap.xml
-```
-
-**Benefits of using sitemap:**
-- Much faster than crawling every page
-- Discovers all URLs without following links
-- Works with large websites (1000+ pages)
-- Automatically handles sitemap indexes
-- Supports gzipped sitemaps (.xml.gz)
 
 ## CI/CD Integration
 
-`check-shipment` is designed for seamless CI/CD integration.
+**Exit Codes:**
+- `0` - Success
+- `1` - Broken links or SEO errors found
+- `2` - Configuration error
 
-### Exit Codes
-
-- **0** - Success (no broken links or `--no-fail` flag used)
-- **1** - Broken links found
-- **2** - Configuration or crawler error
-
-### GitHub Actions
-
+**GitHub Actions:**
 ```yaml
-name: Check Website
-
-on:
-  pull_request:
-  push:
-    branches: [main]
-
-jobs:
-  validate:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v3
-
-      - uses: actions/setup-node@v3
-        with:
-          node-version: 22
-
-      - name: Install dependencies
-        run: npm install
-
-      - name: Build site
-        run: npm run build
-
-      - name: Start server
-        run: npm start &
-
-      - name: Wait for server
-        run: npx wait-on http://localhost:3000
-
-      - name: Validate website
-        run: npx check-shipment --url=http://localhost:3000
+- name: Validate website
+  run: npx check-shipment --url=http://localhost:3000
 ```
 
-### GitLab CI
-
-```yaml
-validate:
-  image: node:22
-  script:
-    - npm install
-    - npm run build
-    - npm start &
-    - npx wait-on http://localhost:3000
-    - npx check-shipment --url=http://localhost:3000
-  only:
-    - merge_requests
-    - main
-```
-
-### Jenkins
-
-```groovy
-pipeline {
-    agent any
-
-    stages {
-        stage('Build') {
-            steps {
-                sh 'npm install'
-                sh 'npm run build'
-            }
-        }
-
-        stage('Test') {
-            steps {
-                sh 'npm start &'
-                sh 'npx wait-on http://localhost:3000'
-                sh 'npx check-shipment --url=http://localhost:3000'
-            }
-        }
-    }
+**Package.json script:**
+```json
+{
+  "scripts": {
+    "validate": "check-shipment --url=http://localhost:3000"
+  }
 }
 ```
 
 ## Reports
 
-Reports are automatically saved to `.check-shipment/report-[timestamp].md`
+Markdown reports are saved to `.check-shipment/report-[timestamp].md`
 
-### Report Format
+**What gets checked:**
+- Broken links (404s, 500s, timeouts, DNS errors)
+- SEO issues (missing canonical, meta tags, Open Graph)
+- Soft 404s (pages that return 200 but show "not found")
 
-```markdown
-# check-shipment Report
-
-**Date:** 2025-01-10 14:30:45
-**Start URL:** http://localhost:3000
-**Duration:** 45 seconds
-
-## Summary
-
-- **Total Pages Crawled:** 127
-- **Total Links Checked:** 456
-- **Broken Links Found:** 3
-- **Success Rate:** 99.3%
-
-## Broken Links
-
-### 404 Not Found (2)
-
-| Broken URL | Source Page |
-|------------|-------------|
-| http://localhost:3000/old-page | http://localhost:3000/blog |
-| http://localhost:3000/missing | http://localhost:3000/about |
-
----
-
-*Generated by check-shipment v1.0.0*
-```
-
-## How It Works
-
-1. **Crawling** - Uses Playwright to render pages with full JavaScript support
-2. **Link Discovery** - Extracts all internal links from each page
-3. **Validation** - Tests each discovered link for accessibility
-4. **Reporting** - Generates detailed reports in console and markdown format
-
-### Features
-
-- Full browser rendering (supports React, Vue, Angular, etc.)
-- Handles client-side routing and hydration
-- Follows redirects (up to 5 redirects)
-- Categorizes errors by type (404, 500, Timeout, DNS Error, SSL Error, etc.)
-- Exponential backoff retry logic
-- Excludes patterns support (wildcards)
-- URL replacement for local testing
+**How it works:**
+1. Renders pages with Playwright (full JavaScript support)
+2. Extracts and validates all links
+3. Checks SEO on every page
+4. Generates detailed console + markdown reports
 
 ## Troubleshooting
 
-### Playwright Browser Installation Issues
-
-If you encounter issues with Playwright browser installation:
-
+**Playwright browser issues:**
 ```bash
-# Install browsers manually
 npx playwright install chromium
 ```
 
-### SSL Certificate Errors
-
-SSL errors are ignored by default. If you want to enforce SSL validation, this can be configured in a future version.
-
-### Timeout Issues
-
-If pages are timing out:
-
+**Pages timing out:**
 ```bash
-# Increase timeout
 npx check-shipment --url=https://example.com --timeout=120
 ```
 
-### Memory/Performance Issues
-
-For large websites:
-
+**Slow on large sites:**
 ```bash
-# Reduce concurrency
-npx check-shipment --url=https://example.com --concurrency=1
+# Use sitemap + higher concurrency
+npx check-shipment --url=https://example.com --use-sitemap --concurrency=10
 ```
 
-### Common Issues
-
-**Issue:** "Start URL is not accessible"
-- **Solution:** Ensure the server is running and the URL is correct
-
-**Issue:** "Too many pages to crawl"
-- **Solution:** Use `--exclude-patterns` to skip unnecessary sections
-
-**Issue:** "Slow crawling"
-- **Solution:** Increase `--concurrency` for faster results
-
-## Roadmap
-
-### v1.x - Link Validation
-- ✅ Core link validation
-- ✅ Progress reporting
-- ✅ Markdown reports
-- ✅ Config file support
-- ⏳ External link checking (optional)
-- ⏳ Sitemap integration
-
-### v2.x - SEO Validation
-- Meta tags validation
-- Structured data checking
-- Open Graph tags
-- Mobile-friendliness
-
-### v3.x - Accessibility Validation
-- WCAG compliance testing
-- ARIA validation
-- Color contrast checking
-- Keyboard navigation
-
-## Contributing
-
-Contributions are welcome! Please feel free to submit a Pull Request.
-
-### Development Setup
+## Development
 
 ```bash
-# Clone the repository
 git clone https://github.com/shyamverma/check-shipment.git
 cd check-shipment
-
-# Install dependencies
-pnpm install
-
-# Run in development mode
-pnpm dev --url=http://localhost:3000
-
-# Build
-pnpm build
-
-# Run tests
-pnpm test
+npm install
+npm run dev -- --url=http://localhost:3000
 ```
 
 ## License
 
 MIT © [Shyam Verma](https://github.com/shyamverma)
 
-## Links
-
-- [GitHub Repository](https://github.com/shyamverma/check-shipment)
-- [Issue Tracker](https://github.com/shyamverma/check-shipment/issues)
-- [NPM Package](https://www.npmjs.com/package/check-shipment)
-
-## Support
-
-If you find this tool helpful, please consider:
-- ⭐ Starring the repository
-- 🐛 Reporting bugs
-- 💡 Suggesting new features
-- 📖 Improving documentation
-
 ---
 
-**Made with ❤️ by [Shyam Verma](https://github.com/shyamverma)**
+**⭐ [Star on GitHub](https://github.com/shyamverma/check-shipment) | 🐛 [Report Issues](https://github.com/shyamverma/check-shipment/issues)**
